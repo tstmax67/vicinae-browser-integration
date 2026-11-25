@@ -28,5 +28,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: extension.xpi
-          generate_release_notes: true
+          generate_release_notes: false
+          body: "Release ${{ github.ref_name }}"
           fail_on_unmatched_files: true
+          overwrite_files: true
