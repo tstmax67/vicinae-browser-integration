@@ -1,7 +1,6 @@
 const HOST_NAME = "com.vicinae.vicinae";
 const RETRY_INITIAL_MS = 1000;
 const RETRY_MAX_MS = 60000;
-const TAB_DEBOUNCE_MS = 50;
 const OPTIONAL_PERMISSIONS = ["bookmarks", "history"];
 const IGNORED_BOOKMARK_SCHEMES = ["place:", "javascript:"];
 // 2: vicinae calls into the extension through requests instead of notifications; required by vicinae
@@ -15,7 +14,6 @@ let retryId;
 let retryDelay = RETRY_INITIAL_MS;
 let serial = 0;
 let manuallyDisconnected = false;
-let tabDebounceTimer = null;
 
 function setConnectionState(state, error = null) {
 	connectionState = state;
@@ -74,8 +72,6 @@ function replyToNative(id, result, error) {
 }
 
 const REQUEST_HANDLERS = {
-	"browser/focus-tab": ({ tabId }) => focusTab(tabId),
-	"browser/close-tab": ({ tabId }) => closeTab(tabId),
 	"browser/get-bookmarks": () => getBookmarks(),
 	"browser/remove-bookmark": ({ bookmarkId }) => removeBookmark(bookmarkId),
 	"browser/search-history": ({ query, maxResults }) => searchHistory(query, maxResults),
@@ -151,7 +147,6 @@ function connectToNativeHost() {
 				if (!error) {
 					retryDelay = RETRY_INITIAL_MS;
 					setConnectionState("connected");
-					sendCurrentTabs();
 				}
 			});
 		});
@@ -219,39 +214,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 
-function sendCurrentTabs() {
-	chrome.tabs.query({}, (tabs) => {
-		notifyNative('browser/tabs-changed', tabs.map(tab => ({
-			id: tab.id,
-			title: tab.title,
-			url: tab.url,
-			windowId: tab.windowId,
-			active: tab.active,
-			audible: tab.audible ?? false,
-			muted: tab.mutedInfo?.muted ?? false,
-			lastAccessed: tab.lastAccessed ?? 0,
-			pinned: tab.pinned ?? false
-		})));
-	});
-}
-
-function sendCurrentTabsDebounced() {
-	clearTimeout(tabDebounceTimer);
-	tabDebounceTimer = setTimeout(sendCurrentTabs, TAB_DEBOUNCE_MS);
-}
-
-// Incremental updates seem overkill in this scenario; so we only send a 
-// fresh new list every time here.
-
-chrome.tabs.onCreated.addListener(() => sendCurrentTabsDebounced());
-chrome.tabs.onUpdated.addListener(() => sendCurrentTabsDebounced());
-chrome.tabs.onRemoved.addListener(() => sendCurrentTabsDebounced());
-chrome.tabs.onActivated.addListener(() => sendCurrentTabsDebounced());
-
-chrome.tabs.onMoved.addListener((tabId, moveInfo) => {
-	// TODO: maybe handle this one day
-});
-
 function getBrowserName() {
 	if (globalThis.browser?.runtime?.getBrowserInfo) {
 		return browser.runtime.getBrowserInfo().then((info) => info.name);
@@ -313,15 +275,6 @@ async function hasPermission(permission) {
 
 async function requirePermission(permission, label) {
 	if (!(await hasPermission(permission))) throw new Error(`${label} permission not granted`);
-}
-
-async function focusTab(tabId) {
-	const tab = await chromeCall((cb) => chrome.tabs.update(tabId, { active: true }, cb));
-	await chromeCall((cb) => chrome.windows.update(tab.windowId, { focused: true }, cb));
-}
-
-async function closeTab(tabId) {
-	await chromeCall((cb) => chrome.tabs.remove(tabId, cb));
 }
 
 async function getBookmarks() {
