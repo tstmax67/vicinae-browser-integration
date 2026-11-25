@@ -1,0 +1,32 @@
+name: Build and Release Unsigned XPI
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Zip current directory as XPI
+        run: |
+          zip -r extension.xpi . \
+            -x ".git/*" ".git" \
+            -x ".github/*" ".github" \
+            -x "README.md" \
+            -x "META-INF/*" "META-INF" \
+            -x "*.xpi" "*.zip"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: extension.xpi
+          generate_release_notes: true
+          fail_on_unmatched_files: true
